@@ -1,0 +1,665 @@
+---
+title: "Bayesian Inference for Quantal Response Equilibrium in Normal-Form Games"
+subtitle: "Online appendix"
+author: "James R. Bland"
+date: "`r Sys.Date()`"
+output: bookdown::html_document2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,cache=TRUE)
+```
+
+# Computing Equilibrium
+
+
+While it is not difficult for a built-in solver, such as Stan's Algebraic Equation Solver, to compute QRE and Noisy beliefs equilibrium for the games studied in this paper, computation time can be substantially sped up by implementing the predictor-corrector algorithm described in Turocy (2010). Furthermore, because the problem is relatively stable for the matching pennies games studied here, one can compute Quantal Response Equilibrium (both Luce and logit specifications) using just the corrector steps of this algorithm. For the Noisy Beliefs Equilibrium, a closed-form solution can be obtained. I outline these procedures in this Appendix.
+
+To begin with, denote the row and column players' payoffs, respectively,  as:
+
+\begin{align}
+u_1&=\begin{bmatrix}
+a_1 & b_1\\ c_1 & d_1
+\end{bmatrix}\quad u_2=\begin{bmatrix}
+a_2 & b_2\\ c_2 & d_2
+\end{bmatrix}
+\end{align}
+We can then write their expected utility of taking each action as a function of these matrices, and opponents' mixed strategies $p_U$ and $p_L$:
+
+\begin{align}
+\begin{pmatrix}\pi_{1,U},\pi_{1,D} \end{pmatrix}&=u_1\begin{pmatrix}p_L\\1-p_L\end{pmatrix},\quad 
+\begin{pmatrix}\pi_{2,L},\pi_{2,R} \end{pmatrix}=u_2\begin{pmatrix}p_U\\1-p_U\end{pmatrix}
+\end{align}
+Hence:
+\begin{align}
+\pi_{1,U}&=a_1p_L+b_1(1-p_L)\\
+\pi_{1,D}&=c_1p_L+d_1(1-p_L)\\
+\pi_{2,L}&=a_2p_U+b_2(1-p_U)\\
+\pi_{2,R}&=c_2p_U+d_2(1-p_U)
+\end{align}
+
+For all of the calcualtions below, computing equilibrium in the logit of probabilities is much more stable than computing it in probability levels. Therefore it is useful to denote:
+\begin{align}
+l_U&=\log(p_U)-\log(1-p_U)\\
+l_L&=\log(p_L)-\log(1-p_L)
+\end{align}
+
+Solving for $p_U$ yields the inverse logit transform:
+
+\begin{align}
+p_U&=\frac{1}{1+\exp(-l_U)}\\
+\frac{\partial p_U}{\partial l_U}&=\frac{\exp(-l_U)}{(1+\exp(-l_U))}=p_U(1-p_U)
+\end{align}
+
+Note that this transform also ensures that mixed strategies are on the unit interval.
+
+## Corrector algorithm for Quantal Response Equilibrium
+
+The corrector algorithm sets up the equilibrium condition as a solution $(l^*_U,l^*_L)$ to the equation:
+
+\begin{align}
+0_{2\times 1}&=H(l;\lambda)
+\end{align}
+
+The solution can be found using Newton's method. That is, starting with guess $l^t$, we make a linear approximation of $H$, then iterate so that this approximation is zero. The sequence of computations is therefore:
+
+\begin{align}
+l^{t+1}&=l^t-\left[\frac{\partial H(l^t;\lambda)}{\partial l^\top}\right]^{-1}H(l^t;\lambda)
+\end{align}
+
+### Logit QRE
+
+The equilibrium condition for logit QRE is:
+
+\begin{align}
+0=H(l;\lambda)&=\begin{pmatrix}
+l^U\\ l_L
+\end{pmatrix} - \lambda\begin{pmatrix}
+\pi_{1,U}-\pi_{1,D}\\ \pi_{2,L}-\pi_{2,R}
+\end{pmatrix}\\
+&=
+\begin{pmatrix}
+l^U\\ l_L
+\end{pmatrix} - \lambda\begin{pmatrix}
+(a_1-b_1-c_1+d_1)p_L+b_1-d_1\\ (a_2-b_2-c_2+d_2)p_U+b_2-d_2
+\end{pmatrix}
+\\
+\frac{\partial H(l,\lambda)}{\partial l^\top}&=\begin{bmatrix}
+1 & -\lambda (a_1-b_1-c_1+d_1)p_L(1-p_L)\\
+-\lambda (a_2-b_2-c_2+d_2)p_U(1-p_U) & 1
+\end{bmatrix}
+\end{align}
+
+### Luce QRE
+
+The equilibrium condition for Luce QRE is:
+
+\begin{align}
+0=H(l;\lambda)&=\begin{pmatrix}
+l^U\\ l_L
+\end{pmatrix} - \lambda\begin{pmatrix}
+\log\pi_{1,U}-\log\pi_{1,D}\\ \log\pi_{2,L}-\log\pi_{2,R}
+\end{pmatrix}
+\\
+&=
+\begin{pmatrix}
+l^U\\ l_L
+\end{pmatrix} - \lambda\begin{pmatrix}
+\log(a_1p_L+b_1(1-p_L))-\log(c_1p_L+d_1(1-p_L))\\ \log(a_2p_U+b_2(1-p_U))-\log(c_2p_U+d_2(1-p_U))
+\end{pmatrix}
+\\
+\frac{\partial H(l;\lambda)}{\partial l^\top}&=\begin{bmatrix}
+1 & -\lambda p_L(1-p_L)\left(\frac{a_1-b_1}{\pi_{1,U}}-\frac{c_1-d_1}{\pi_{1,D}}\right)\\
+-\lambda p_U(1-p_U)\left(\frac{a_2-b_2}{\pi_{2,L}}-\frac{c_2-d_2}{\pi_{1,R}}\right) & 1
+\end{bmatrix}
+\end{align}
+
+
+## Noisy Beliefs Equilibrium
+
+For the row player, the probability of the row player playing Up is the probability that Up is her best response to her random belief in her opponent's mixed strategy, denoted $q_L$. 
+
+\begin{align}
+p_U&=\Pr\left(\pi_U\geq \pi_D \mid q_L\right)\\
+&=\Pr\left(a_1q_L+b_1(1-q_L)\geq c_1q_L+d_1(1-q_L)\right)
+\end{align}
+which we can write as:
+\begin{align}
+p_U&=\Pr\left(\beta_1(q_L-p_L^*)\geq 0\right)\\
+&=\begin{cases}
+\Pr(q_L\geq p_L^*) & \text{if }\beta_1\geq 0\\
+\Pr(q_L\leq p_L^*) & \text{otherwise }
+\end{cases}
+\end{align}
+where $p_L^*=\frac{-b_1+d_1}{a_1-b_1-c_1+d_1}$ is the mixed strategy Nash equilibrium probability of playing Left, and $\beta_1=a_1-b_1-c_1+d_1$. Now suppose that the logit of the row player's random belief follows a type I extreme value distribution centered on (the logit of) their opponent's actual mixed strategy:
+\begin{align}
+\mathrm{logit}(q_L)=\log(q_L)-\log(1-q_L)&=\log(p_L)-\log(1-p_L)+\lambda^{-1}\epsilon
+\end{align}
+Since the logit transform is monotone, we can write the row player's probability of playing Up as:
+
+\begin{align}
+p_U&=\begin{cases}
+\Pr\left(\mathrm{logit}(q_L)\geq \mathrm{logit}(p^*_L)\right)&\text{if }\beta_1\geq 0\\
+\Pr\left(\mathrm{logit}(q_L)\leq \mathrm{logit}(p^*_L)\right)&\text{otherwise}
+\end{cases}\\
+&=
+\begin{cases}
+\Pr\left(\mathrm{logit}(p_L)+\lambda^{-1}\epsilon\geq \mathrm{logit}(p^*_L)\right)&\text{if }\beta_1\geq 0\\
+\Pr\left(\mathrm{logit}(p_L)+\lambda^{-1}\epsilon\leq \mathrm{logit}(p^*_L)\right)&\text{otherwise}
+\end{cases}
+\\
+&=\begin{cases}
+\Pr\left(\epsilon\geq \lambda(\mathrm{logit}(p^*_L)-\mathrm{logit}(p_L))\right) &\text{ if } \beta_1\geq 0\\
+\Pr\left(\epsilon\leq \lambda(\mathrm{logit}(p^*_L)-\mathrm{logit}(p_L))\right) & \text{ otherwise}
+\end{cases}\\
+&=\Lambda\left(-\mathrm{sign}(\beta_1)\lambda\left(\mathrm{logit}(p^*_L)-\mathrm{logit}(p_L)\right)\right)
+\end{align}
+where $\Lambda(x)=1/(1+\exp(-x))$ is the inverse logit function, and the last line follows because $\Lambda(\cdot)$ is symmetric around zero. Finally, taking the logit of both sides of this equation yields:
+\begin{align}
+\mathrm{logit}(p_U)&=-\mathrm{sign}(\beta_1)\lambda\left(\mathrm{logit}(p^*_L)-\mathrm{logit}(p_L)\right)
+\end{align}
+and similarly for the column player's probability:
+\begin{align}
+\mathrm{logit}(p_L)&=-\mathrm{sign}(\beta_2)\lambda\left(\mathrm{logit}(p^*_U)-\mathrm{logit}(p_U)\right)
+\end{align}
+This is a system of linear equations in $(\mathrm{logit}(p_U),\mathrm{logit}(p_L))$, and so the closed-form solution to Noisy Beliefs Equilibrium with type I extreme value errors is:
+\begin{align}
+\mathrm{logit}(p_U)&=\frac{-\mathrm{sign}(\beta_1)\lambda(\mathrm{logit}(p_L^*)+\mathrm{sign}(\beta_2)\lambda\mathrm{logit}(p_U^*))}{1-\mathrm{sign}(\beta_1\beta_2)\lambda^2}\\
+\mathrm{logit}(p_L)&=\frac{-\mathrm{sign}(\beta_2)\lambda(\mathrm{logit}(p_U^*)+\mathrm{sign}(\beta_2)\lambda\mathrm{logit}(p_L^*))}{1-\mathrm{sign}(\beta_1\beta_2)\lambda^2}
+\end{align}
+
+
+# Comparison between Bayesian and Maximum Likelihood methods
+
+This Appendix shows how to estimate Quantal Response Equilibrium using both Bayesian and Maximum Likelihood methods. For this example I stick with a specification that assumes logit errors and no risk aversion, however it is straightforward to make these extensions. The code implementing these extensions can be found in the replication files for this paper.
+
+## Software and packages used
+
+I implement the Bayesian estimation in *R* 4.2.1 using *RStan* 2.26.13. Estimation will require the following packages:
+
+```{r,message=F,cache=F}
+library(tidyverse)
+library(rstan)
+  # declare some options for Stan
+  rstan_options(auto_write = TRUE)
+  options(mc.cores = parallel::detectCores())
+
+```
+
+## Data structure
+
+`SeltenChmura2008data.rds` is a structured list that can be passed to *Stan*. It contains all data needed to estimate all of the models estimated in this paper. 
+
+```{r}
+d<-readRDS("SeltenChmura2008data.rds")
+names(d)
+```
+
+For estimating homogeneous QRE, we will need the payoffs, which look like this:
+```{r}
+d$Payoffs
+```
+
+Each row corresponds to a different game, with the format (using the notation from the previous section of this online Appendix):
+
+$$
+(a_1, b_1, c_1, d_1, a_2, b_2, c_2, d_2)
+$$
+
+We will also need the counts of how many times each action was played (here I am just showing the first six rows of this matrix):
+
+```{r}
+d$UDLRcount %>% head()
+```
+
+each row corresponds to a group of eight players, and each column counts the actions (Up, Down, Left, Right) played.
+
+For *Stan* to read in the data, it needs some instructions on how to import it. These are declared in the data block:
+
+```{Rcpp,file="ExampleStan/data.stan",eval=F}
+```
+
+## Computing QRE
+
+The process for computing QRE in both methods is the same. Here is the implementation of the corrector algorithm for logit QRE discussed in the previous section of this Appendix
+
+```{r}
+logitQRE<-function(lambda, # Choice precision
+                   payoffs, # payoffs of the game
+                   nc,# Number of corrector steps
+                   ftol # function tolerance for inverting DH
+                   ){ 
+  
+  
+  a1<-payoffs[1]
+  b1<-payoffs[2]
+  c1<-payoffs[3]
+  d1<-payoffs[4]
+  
+  a2<-payoffs[5]
+  b2<-payoffs[6]
+  c2<-payoffs[7]
+  d2<-payoffs[8]
+  
+  l<-c(0,0) # initial guess
+  
+  for (cc in 1:nc) {
+    p<-1/(1+exp(-l)) # convert logit probabilities to probability levels
+    
+    # objective function
+    H<-c(0,0)
+    H[1]<-l[1]-lambda*((a1-b1-c1+d1)*p[2]+b1-d1)
+    H[2]<-l[2]-lambda*((a2-b2-c2+d2)*p[1]+b2-d2)
+    
+      DH<-diag(c(1,1))
+      DH[1,2]<- -lambda*(a1-b1-c1+d1)*p[2]*(1-p[2])
+      DH[2,1]<- -lambda*(a2-b2-c2+d2)*p[1]*(1-p[1])
+      
+      # corrector step
+      dl<--solve(DH, tol = ftol)%*%H
+      l<-l+dl
+
+   
+  }
+  
+  # return the log QRE probabilities
+  c(-log(1+exp(-l[1])),-log(1+exp(l[1])), -log(1+exp(-l[2])), -log(1+exp(l[2])))
+  
+}
+
+# example output, converted into probabilities:
+logitQRE(1, d$Payoffs[1,],5,1e-17) %>% exp()
+
+```
+
+For the Bayesian estimation, I put a similar function in the *Stan* functions block:
+
+```{Rcpp,file="ExampleStan/functions.stan",eval=F}
+```
+
+## Computing the likelihood and estimating
+
+In both Bayesian and Maximum Likelihood techniques, we need to compute the log-likeihood. For each game, this is computed as follows:
+
+$$
+\log p(y\mid \lambda)=\sum_{c=1}^C y_c^\top \log Q_{c}(\lambda)
+$$
+
+where:
+
+* $C$ is the total number of cohorts in the data,
+* $y_c$ is the row of `ULDRcount` corresponding to cohort $c$, and
+* $\log Q_c(\lambda)$ is the log QRE probabilities computed in the above functions.
+
+For maximum likelihood, we can compute and minimize the negative likelihood function as follows:
+
+```{r}
+
+neglogLike<-function(lambda) {
+  
+  #compute QRE given lambda, and store the (log) equilibrium probabilities
+  #in lpQRE
+  lpQRE<-c()
+  for (gg in 1:d$ngames) {
+    payoffs<-d$Payoffs[gg,]
+    lpQRE<-rbind(lpQRE,logitQRE(lambda,payoffs,10,1e-17))
+  }
+  logL<-0
+  #now loop over each cohort's choice frequency
+  for (cc in 1:d$ncohorts) {
+    logL<-logL+sum(d$UDLRcount[cc,]*lpQRE[d$GameID[cc],])
+  }
+  -logL
+}
+
+neglogLike(1)
+start_time<-Sys.time()
+MLEFit<-stats4::mle(minusl=neglogLike,start=list(lambda=1),
+                    lower=list(lambda=0)
+                    ,method="L-BFGS-B")
+end_time<-Sys.time()
+MLEFit %>% summary() %>% print()
+(MLEFitTime<-(end_time-start_time))
+```
+
+For Bayesian estimation, we add the log-likelihood to the log posterior density. Here is the remainder of the *Stan* file, with some instructions to include the functions and data blocks shown above:
+
+```{Rcpp,file="ExampleStan/QRE_Example.stan",eval=F}
+```
+
+Then we compile the program and simulate the posterior using *Stan*:
+
+```{r,results='hide'}
+Model<-stan_model(paste0("ExampleStan/QRE_Example.stan"),
+                          auto_write=TRUE,
+                          allow_undefined=TRUE,
+                          verbose=FALSE,
+                          includes=c("\n"))
+start_time<-Sys.time()
+BayesFit<-sampling(
+      Model,
+      data  = d,
+      seed = 1234
+    )
+end_time<-Sys.time()
+```
+
+And here are the results from the Bayesian estimation:
+
+```{r}
+summary(BayesFit)$summary %>% knitr::kable()
+(BayesFitTime<-(end_time-start_time))
+```
+
+Note that the posterior mean and standard deviation are quite similar to the MLE estimates. Additionally, the Bayesian model takes considerably longer to estimate.
+
+## Extending the model
+
+### Risk aversion
+
+A common specification for Quantal Response Equilibrium is to use logit errors (as above) with CRRA utility. This adds a additional parameter $r$. For maximum likelihood estimation, we just need to add this parameter to the likelihood function:
+
+```{r}
+neglogLike<-function(lambda,r) {
+  
+  
+  #compute QRE given lambda, and store the (log) equilibrium probabilities
+  #in lpQRE
+  
+  lpQRE<-c()
+  for (gg in 1:d$ngames) {
+    payoffs<-d$Payoffs[gg,]^r # <-- note here: CRRA utility
+    lpQRE<-rbind(lpQRE,logitQRE(lambda,payoffs,1,1e-17))
+  }
+  logL<-0
+  #now loop over each cohort's choice frequency
+  for (cc in 1:d$ncohorts) {
+    logL<-logL+sum(d$UDLRcount[cc,]*lpQRE[d$GameID[cc],])
+  }
+  -logL
+}
+
+start_time<-Sys.time()
+CRRAMLEFit<-stats4::mle(minusl=neglogLike,method="L-BFGS-B",
+                    start=list(lambda=1,r=1),
+                    lower=list(lambda=0,r=0))
+end_time<-Sys.time()
+CRRAMLEFit %>% summary() %>% print()
+(CRRA_MLEFitTime<-end_time-start_time)
+```
+
+So the computation time has increased by a factor of:
+
+```{r}
+as.numeric(CRRA_MLEFitTime)/as.numeric(MLEFitTime)
+```
+
+The Bayesian implementation of this requires modifying the *Stan* file in three places. These are: (i) declaring the new parameter, (ii) transforming payoffs into utility, and (iii) specifying the prior for $r$. Here is the modified *Stan* file:
+
+```{Rcpp,file="ExampleStan/CRRAQRE_Example.stan",eval=F}
+```
+
+
+```{r,results='hide',warning=FALSE}
+Model<-stan_model(paste0("ExampleStan/CRRAQRE_Example.stan"),
+                          auto_write=TRUE,
+                          allow_undefined=TRUE,
+                          verbose=FALSE,
+                          includes=c("\n"))
+start_time<-Sys.time()
+CRRABayesFit<-sampling(
+      Model,
+      data  = d,
+      seed = 1234
+    )
+end_time<-Sys.time()
+```
+
+```{r}
+summary(CRRABayesFit)$summary %>% knitr::kable()
+(CRRA_BayesFitTime<-(end_time-start_time)) 
+```
+
+
+
+Again, the posterior means and standard deviations are similar to the MLE estimates and standard errors. By adding one additional parameter, we have increased the computational time of the Bayesian estimation by a factor of:
+
+```{r}
+as.numeric(CRRA_BayesFitTime)/as.numeric(BayesFitTime)
+```
+
+which is much less than the same increase for the MLE model. Anecdotally, the *Stan* program spends a considerable amount of time parsing the data, and as the data block is identical between these two models, this time is not increased. The additional computation time comes from simulating a more complex (i.e. higher dimensional) posterior distribution.
+
+### Game-specific choice precision
+
+Another model under consideration is a specification permitting $\lambda$ to vary between the twelve games. This specification assumes that each game-specific $\lambda_g$ is drawn from a lognormal distribution with parameters $\log\lambda$ (so that the median is $\lambda$) and $\sigma^\lambda$, that is:
+
+$$
+\log\lambda_g\sim N(\log\lambda,\sigma^\lambda)
+$$
+
+For maximum likelihood estimation, this can be implemented through Monte Carlo integration. That is, if $Q_c(\lambda)$ is a vector of QRE probabilities for cohort $c$, then cohort $c$'s contribution to the likelihood is:
+
+$$
+\begin{aligned}
+p(y_c\mid \lambda,\sigma^\lambda)&=E\left[\exp(y_c^\top\log Q_c(\exp(\log\lambda+z\sigma^\lambda)))\right]
+\end{aligned}
+$$
+where the expectation is over $z\sim N(0,1)$. The expectation can be approximated using draws from the standard normal distribution $\{z_s\}_{s=1}^S$:
+
+$$
+\begin{aligned}
+p(y_c\mid \lambda,\sigma^\lambda)&\approx\frac{1}{S}\sum_{s=1}^S\left[\exp(y_c^\top\log Q_c(\exp(\log\lambda+z_s\sigma^\lambda)))\right]
+\end{aligned}
+$$
+
+Note that for every game, we must now compute quantal response equilibrium  $S$ times. The (negative) log-likelihood function can therefore be coded in *R* as:
+
+```{r}
+set.seed(42)
+S<-30
+z<-rnorm(S)
+
+
+neglogLike<-function(lambda,sigma) {
+  
+  logL<-0  
+  
+  #compute QRE given lambda, and store the (log) equilibrium probabilities
+  #in lpQRE
+  for (gg in 1:d$ngames) {
+    payoffs<-d$Payoffs[gg,]
+    
+    # choices of all cohorts within a game
+    gameData<-d$UDLRcount[d$GameID==gg,]
+    
+    
+    lp_c<-matrix(0,dim(gameData)[1],S);
+    for (ss in 1:S) {
+      lpQRE<-logitQRE(exp(log(lambda)+sigma*z[ss]),payoffs,10,1e-17)
+      lp_c[,ss]<-exp(gameData%*%lpQRE)
+    }
+    
+    logL<-logL+sum(log(lp_c%*%rep(1/S,S)))
+  }
+  -logL %>% as.numeric()
+}
+
+neglogLike(1,0.1)
+
+start_time<-Sys.time()
+MLEFit<-stats4::mle(minusl=neglogLike
+                    ,start=list(lambda=1,sigma=0.1)
+                    ,lower=list(lambda=0,sigma=0)
+                   ,method="L-BFGS-B"
+)
+end_time<-Sys.time()
+MLEFit %>% summary() %>% print()
+
+(HGame_MLEFitTime<-(end_time-start_time))
+```
+
+Note that this is an increase in computational time compared to the homogeneous $\lambda$ model by a factor of:
+
+```{r}
+as.numeric(HGame_MLEFitTime)/as.numeric(MLEFitTime) 
+```
+
+For the Bayesian model, this same extension is achieved through data augmentation: the game-specific $\lambda$s are treated as missing data, and are jointly estimated with the model's population level parameters $(\lambda,\sigma^\lambda)$.
+The following *Stan* file implements this specification:
+
+```{Rcpp,file="ExampleStan/HeterogeneousQRE_Example.stan",eval=F}
+```
+
+
+```{r,results='hide',warning=FALSE}
+
+Model<-stan_model(paste0("ExampleStan/HeterogeneousQRE_Example.stan"),
+                          auto_write=TRUE,
+                          allow_undefined=TRUE,
+                          verbose=FALSE,
+                          includes=c("\n"))
+start_time<-Sys.time()
+BayesFit<-sampling(
+      Model,
+      data  = d,
+      seed = 1234
+    )
+end_time<-Sys.time()
+
+```
+
+
+```{r}
+summary(BayesFit)$summary %>% knitr::kable()
+(HGame_BayesFitTime<-(end_time-start_time))
+```
+
+Note that while the computation time has increased, it is in the same order of magnitude as the homogeneous model. Also, adding the game-specific heterogeneity has increased the computational time, compared to the homogeneous $\lambda$ model, by a factor of:
+
+```{r}
+as.numeric(HGame_BayesFitTime)/as.numeric(BayesFitTime)
+```
+
+
+# Simulation results
+
+This section of the online Appendix reports the results of a Monte Carlo simulation designed to assess the relative performance of the Bayesian and Maximum Likelihood Quantal Response Equilibrium estimators. In particular, I simulate 1,000 datasets generated by homogeneous, risk-neutral players participating in the Selten & Chmura (2008) experiment. The equilibrium concept is logit QRE with $\lambda = 1$. I simulate datasets with either 50 decisions per game, or 400 decisions per game, both of which are considerably less than the actual number of decisions in the original experiment.  I then estimate QRE models assuming both risk-neutral and CRRA players, using both maximum likelihood and Bayesian estimation. Therefore, the true values of all model parameters are $\lambda=r=1$. 
+
+## Estimating $\lambda$
+
+The following figure compares estimates of $\lambda$, with the maximum likelihood estimates on the vertical axis, and the posterior means from the Bayesian models on the horizontal axis. In general, these estimates are reasonably similar, evidenced by them falling close to the $45^\circ$ line (dotted lines). Perhaps the greatest discrepancy between these is that the Bayesian estimates are slightly larger than the maximum likelihood estimates for the small sample size (50 decisions for game) when the model assumes CRRA players. This can be seen by most of the dots in the top-right plot falling to the right of the $45^\circ$ line.
+
+Since the estimates are generally arranged along the $45^\circ$ line, we can also conclude from this simulation that, at these sample sizes, sampling variation is a much larger influence on estimates than whether maximum likelihood or Bayesian techniques are used. 
+
+```{r,echo=F}
+SimResults<-readRDS("ExampleStan/SimResults.rds")
+
+(
+  ggplot(SimResults,aes(x=lambda_B,y=lambda_MLE))
+  +theme_bw()
+  +geom_point(alpha=0.2)
+  +facet_grid(ifelse((r_B>0),"CRRA","Risk neutral")~paste0(decisions," decisions per game"))
+  +geom_abline(slope=1,intercept=0,linetype="dashed")
+  +xlab("Bayesian estimate (posterior mean)")
+  +ylab("Maximum likelihood estimate")
+  +labs(title="Comparison of estimates for \u03bb")
+)
+
+```
+
+The following table summarizes the sampling distributions of the posterior mean and maximum likelihood estimator, showing their means, with standard deviations in parentheses.  Both estimators improve in both accuracy and precision as the sample size increases.
+
+```{r,echo=F,message=F}
+(SimResults
+ %>% group_by(decisions,r_B>0)
+ %>% summarize(Bayes = paste0(mean(lambda_B )%>% round(4)," (",sd(lambda_B) %>% round(4),")"),MLE = paste0(mean(lambda_MLE )%>% round(4)," (",sd(lambda_MLE) %>% round(4),")"))
+ %>% rename(`Decisions per game`=decisions)
+ %>% rename(`CRRA?` = `r_B > 0`)
+ %>% knitr::kable()
+)
+```
+
+## Estimting risk aversion $r$
+
+The following plot compares posterior means of $r$ (horizontal coordinate) to their equivalent maximum likelihood estimates (vertical coordinate). For the smaller sample size (right panel), most maximum likelihood estimates are larger than the posterior means from the same samples. 
+
+```{r,echo=F}
+(
+  ggplot(SimResults %>% filter(r_MLE>=0),aes(x=r_B,y=r_MLE))
+  +geom_point(alpha=0.2)
+  +theme_bw()
+  +facet_wrap(~paste0(decisions," decisions per game"))
+  +geom_abline(slope=1,intercept=0,linetype="dashed")
+  +xlab("Bayesian estimate (posterior mean)")
+  +ylab("Maximum likelihood estimate")
+  +labs(title="Comparison of estimates for r")
+)
+```
+
+The following table summarizes the mean (and standard deviation) of the simulated estimates. even for the small sample, they are both reasonably close to the true value of $r=1$
+
+```{r,echo=F}
+(
+SimResults %>% filter(r_MLE>=0)
+%>% group_by(decisions)
+%>% summarize(Bayes = paste0(mean(r_B )%>% round(4)," (",sd(r_B) %>% round(4),")"),MLE = paste0(mean(r_MLE )%>% round(4)," (",sd(r_MLE) %>% round(4),")")
+             
+  )
+%>% rename(`Decisions per game`=decisions)
+ %>% knitr::kable()
+)
+```
+
+## Computational time
+
+The following figure shows the empirical distribution of computational times for each of the estimators. While it takes longer for *Stan* to simulate 4,000 draws from the posterior distribution than it does for *R* to maximize the likelihood, note that the increase in time associated with adding the CRRA specification does not increase computational time by relatively as much in the Bayesian estimation, suggesting that Bayesian techniques may have a computational advantage as the number of parameters increases.
+
+```{r,echo=F}
+
+(
+  ggplot(SimResults %>% mutate(`CRRA?` = r_B>=0),aes(linetype=`CRRA?`))
+  +stat_ecdf(aes(x=Btime %>% as.numeric(),color="Bayesian"))
+  +stat_ecdf(aes(x=MLEtime %>% as.numeric(),color="MLE"))
+  +scale_x_continuous(trans="log10")
+  +theme_bw()
+  +xlab("Computational time (s)")
+  +ylab("Cumulative fraction")
+)
+```
+
+```{r,echo=F}
+(
+ggplot(SimResults %>% mutate(`CRRA?` = r_B>=0),aes(x=Btime %>% as.numeric(),y=MLEtime %>% as.numeric(),color=`CRRA?`))
++theme_bw()
++geom_point(alpha=0.2)
++xlab("Computation time for Bayesian model (s)")
++ylab("Computation time for Maximum Likelihood model (s)")
+#+geom_smooth(method="lm",formula="y~x")
+)
+```
+
+```{r,echo=F}
+
+sr<-(SimResults 
+     %>% mutate(`CRRA?` = r_B>=0,SimStep = ceiling((1:n())/2))
+     %>% pivot_wider(id_cols = SimStep,names_from=`CRRA?`,values_from=c("Btime","MLEtime"))   
+     %>% mutate(BayesExtraTime = (Btime_TRUE %>% as.numeric())/(Btime_FALSE %>% as.numeric()),
+                MLExtraTime = (MLEtime_TRUE %>% as.numeric())/(MLEtime_FALSE %>% as.numeric())
+     )
+)
+
+(
+  ggplot(sr,aes(x=BayesExtraTime,y=MLExtraTime))
+  +geom_point(alpha=0.2)
+  +geom_abline(slope=1,intercept=0,linetype="dashed")
+  +theme_bw()
+  +xlab("Bayesian")
+  +ylab("Maximum likelihood")
+  +labs(title="Relative extra time to compute CRRA model")
+  +geom_text(x=2.5,y=2.7,label="y=x")
+)
+```
+```{r,echo=F}
+sr %>% summarize(Bayes = mean(BayesExtraTime), ML = mean(MLExtraTime)) %>% knitr::kable()
+```

@@ -1,0 +1,221 @@
+---
+title: "Plots etc from the Selected Model"
+author: "James Bland"
+date: '2022-06-14'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,cache=TRUE)
+library(rstan)
+library(dplyr)
+source("LoadSeltenCommon.R")
+```
+
+# Load the selected model
+
+```{r}
+Estimates<-readRDS("ESTIMATES.rds")
+Fit<-Estimates[["QREBeta_RiskNeutral_Game_Ind.stan" ]]
+rm(Estimates)
+
+# Selected model
+
+```
+
+```{r}
+sim<-extract(Fit,pars=c("lambda","taulambdaGame","kappa"))
+
+SimData<-tibble(lambda=sim$lambda,slG=sim$taulambdaGame,kappa=sim$kappa)
+```
+```{r,eval=T}
+QREFixed<-function(lambdaGrid,r,Urow,Ucol) {
+  # This function computes the logit QRE of a 2-player game 
+  # q is the logit of the first action of each player
+  q0<-c(0,0)
+  OUTPUT<-tibble()
+  for (lambda in lambdaGrid) {
+    qfun<-function(q) {
+      p<-1/(1+exp(-q))
+      err<-c(0,0)
+      err[1]<-q[1]-lambda*((Urow[1,]^r-Urow[2,]^r)%*%rbind(p[2],1-p[2]))
+      err[2]<-q[2]-lambda*((Ucol[1,]^r-Ucol[2,]^r) %*% rbind(p[1],1-p[1]))
+      
+      sum(err^2)
+    }
+    q0<-optim(q0,qfun)$par
+    OUTPUT<-rbind(OUTPUT,tibble(lambda=lambda,u = 1/(1+exp(-q0[1])),l=1/(1+exp(-q0[2]))))
+  }
+  OUTPUT
+  
+} 
+
+```
+
+```{r}
+
+set.seed(42)
+lambda<-SimData$lambda+SimData$slG*rnorm(n=dim(SimData)[1])
+
+Predictions<-tibble()
+for (gg in 1:12) {
+    qre<-QREFixed(lambda,1,SC2008payoffs[[gg]]$Urow,SC2008payoffs[[gg]]$Ucol)
+    qre$game<-gg
+    qre$kappa<-SimData$kappa
+    Predictions<-rbind(Predictions,qre)
+}
+
+```
+
+```{r}
+QRETrace<-(readRDS("QRETrace.rds")
+            %>%rename(game=Game,u=pU,l=pL)          
+)
+
+QRETrace %>% head()
+
+plt<-(
+  ggplot(data=Predictions,aes(x=u,y=l))
+  +geom_path(data=QRETrace,color="red")
+  +geom_jitter(size=0.1,alpha=0.03,width=0.01,height=0.01)
+  
+  +facet_wrap(~game)
+  +coord_fixed()
+  +theme_bw()
+  +xlab("Up")
+  +ylab("Left")
+)
+plt %>% print()
+ 
+ggsave(plot=plt,filename="../outputs/SelectedModel_MeanPredictions.png",dpi=1000)
+```
+
+```{r}
+
+Predictions<-(
+  Predictions 
+  %>% mutate(pU = rbeta(dim(Predictions)[1],u*kappa,(1-u)*kappa),
+     pL = rbeta(dim(Predictions)[1],l*kappa,(1-l)*kappa),
+     qU = rbinom(dim(Predictions)[1],400,pU)/400,
+     qL = rbinom(dim(Predictions)[1],400,pL)/400
+             )
+  
+)
+
+Predictions %>% head()
+```
+
+```{r}
+
+plt<-(
+  ggplot()
+  +geom_path(data=QRETrace,aes(x=u,y=l),color="red")
+  +geom_point(size=0.1,alpha=0.1,data=Predictions,aes(x=qU,y=qL))
+  #+stat_density_2d(
+  #  data=Predictions,aes(x=qU,y=qL,fill = after_stat(density)),alpha=1,
+  #  geom = "raster",
+  #contour = FALSE)
+  #+ scale_fill_viridis_c()
+  
+  +facet_wrap(~game)
+  +coord_fixed()
+  +theme_bw()
+  +xlab("Up")
+  +ylab("Left")
+)
+plt %>% print()
+ 
+ggsave(plot=plt,filename="../outputs/SelectedModel_DispersionPredictions.png",dpi=1000)
+```
+
+# Out of sample predictions
+
+## HSM attacker defender game
+
+```{r}
+Urow<-rbind(c(1,1),c(4,-2))
+Ucol1<-rbind(c(1,1),c(0,6))  
+Ucol2<-rbind(c(1,1),c(-2,4)) 
+
+lgrid<-1/(1-seq(0,0.99,length=100))-1
+          
+qre1<-QREFixed(lgrid,1,Urow,Ucol1)
+qre1$ColPayoffs<-1
+qre2<-QREFixed(lgrid,1,Urow,Ucol2)
+qre2$ColPayoffs<-2
+
+QRE<-rbind(qre1,qre2)
+
+plt<-(ggplot(QRE,aes(x=u,y=l,group=ColPayoffs,linetype=as.factor(ColPayoffs)))
+      +geom_path()
+      +coord_fixed()
+      +theme_bw()
+      +xlab("Up")
+      +ylab("Left")
+      +geom_hline(yintercept=0.5,linetype="dashed")
+      #+facet_wrap(~ColPayoffs)
+      )
+plt %>% print()
+```
+
+```{r}
+
+lambda1<-SimData$lambda+SimData$slG*rnorm(n=dim(SimData)[1])
+
+lambda2<-SimData$lambda+SimData$slG*rnorm(n=dim(SimData)[1])
+
+pred1<-QREFixed(lambda1,1,Urow,Ucol1)
+pred2<-QREFixed(lambda2,1,Urow,Ucol2)
+Predictions<-(tibble( 
+  u1 = pred1$u,u2=pred2$u,
+  l1 = pred1$l,l2=pred2$l,
+  kappa = SimData$kappa
+)
+)
+
+head(Predictions)
+
+```
+
+```{r}
+# number of observations in HSM
+npairs<-12 # number of pairs
+ndecisions<-30 # decisions per subject
+pvalues<-c()
+pvaluesNoBeta<-c()
+for (ss in 1:dim(Predictions)[1]) {
+
+  pars<-Predictions[ss,] 
+  
+  pl1<-rbeta(npairs,pars$l1*pars$kappa,(1-pars$l1)*pars$kappa)
+  pl2<-rbeta(npairs,pars$l2*pars$kappa,(1-pars$l2)*pars$kappa) 
+
+# draw from Beta-binomial distribution  
+  np1<-rbinom(npairs,ndecisions,pl1)/ndecisions
+  np2<-rbinom(npairs,ndecisions,pl2)/ndecisions
+  pvalues<-c(pvalues,t.test(np1,np2)$p.value)
+
+  # Draw from just the binomial distribution
+    np1<-rbinom(npairs,ndecisions,pars$l1)/ndecisions
+  np2<-rbinom(npairs,ndecisions,pars$l2)/ndecisions
+  pvaluesNoBeta<-c(pvaluesNoBeta,t.test(np1,np2)$p.value)
+}
+```
+
+```{r}
+plt<-(
+  ggplot()
+  +stat_ecdf(data=tibble(p=pvalues),aes(x=p,linetype="Beta-binomial"))
+  +stat_ecdf(data=tibble(p=pvaluesNoBeta),aes(x=p,linetype="Binomial"))
+  +theme_bw()
+  +labs(linetype = "Assumed distribution")
+  +xlab("p-value / test size") 
+  +ylab("Cumulative density / test power")
+  +xlim(c(0,0.15))
+) 
+plt %>% print()
+ggsave(plot=plt,filename="../outputs/SelectedModel_PowerTest.png",dpi=1000)
+mean(pvalues<0.05) %>% print()
+mean(pvaluesNoBeta<0.05) %>% print()
+
+```

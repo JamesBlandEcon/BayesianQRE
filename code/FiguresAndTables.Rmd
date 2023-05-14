@@ -1,0 +1,322 @@
+---
+title: "Bayesian Inference for Quantal Response Equilibrium in Normal-Form Games"
+subtitle: "Code for figures and tables"
+author: "James Bland"
+output: html_document
+---
+
+
+The following file shows code generating all of the figures and tables in the manuscript.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,cache=TRUE)
+```
+
+```{r}
+source("LoadSeltenCommon.R")
+```
+
+# Figure 2
+
+```{r}
+QREFixed<-function(lambdaGrid,r,Urow,Ucol) {
+  # This function computes the logit QRE of a 2-player game 
+  # q is the logit of the first action of each player
+  q0<-c(0,0)
+  OUTPUT<-tibble()
+  for (lambda in lambdaGrid) {
+    qfun<-function(q) {
+      p<-1/(1+exp(-q))
+      err<-c(0,0)
+      err[1]<-q[1]-lambda*((Urow[1,]^r-Urow[2,]^r)%*%rbind(p[2],1-p[2]))
+      err[2]<-q[2]-lambda*((Ucol[1,]^r-Ucol[2,]^r) %*% rbind(p[1],1-p[1]))
+      
+      sum(err^2)
+    }
+    q0<-optim(q0,qfun)$par
+    OUTPUT<-rbind(OUTPUT,tibble(lambda=lambda,u = 1/(1+exp(-q0[1])),l=1/(1+exp(-q0[2]))))
+  }
+  OUTPUT
+  
+}
+```
+
+```{r}
+lambda<-c(0,1/(1-seq(0.01,0.99,length=101))-1)
+rlist<-c(1,0.3,1.7)
+rnames<-c("Risk neutral\n r=1.0","Risk averse\n r=0.3","Risk loving\n r = 1.7")
+
+QRE<-tibble()
+
+
+
+for (gg in 1:12) {
+  for (rr in 1:length(rlist)) {
+    qre<-QREFixed(lambda,rlist[rr],SC2008payoffs[[gg]]$Urow,SC2008payoffs[[gg]]$Ucol)
+    qre$game<-gg
+    qre$r<-rlist[rr]
+    qre$rnames<-rnames[rr]
+    QRE<-rbind(QRE,qre)
+  }
+}
+
+```
+
+```{r}
+QRE %>% head()  
+
+plt<-(  
+  ggplot()
+  +geom_path(data=QRE,aes(x=u,y=l,group=r,linetype=rnames))
+  +geom_point(data=data,aes(x = row/count,y=column/count),size=0.5,color="red")
+  
+  +coord_fixed()
+  +facet_wrap(~game)
+  +theme_bw()
+  +theme(legend.position="bottom",legend.title=element_blank())
+  +xlab("Up")+ylab("Left")
+)
+ggsave(plot=plt,filename="../outputs/SeltenData.png",dpi=1000)
+plt %>% print()
+
+```
+
+## QRE estimates for homogeneous CRRA model
+
+```{r}
+Fit<-readRDS("SimulationOutputs/estimates_QRE_CRRA_Homogeneous_Ind.rds")
+summary(Fit)$summary[c("lambda","r","lp__"),c("mean","sd","2.5%","97.5%")] %>% knitr::kable()
+
+LR<-rstan::extract(Fit,pars=c("lambda","r")) %>% data.frame()
+```
+
+```{r}
+plt<-(
+  ggplot(LR,aes(x=lambda,y=r))
+  +geom_point(alpha=0.3,stroke=0)
+  +geom_vline(xintercept=mean(LR$lambda),color="red")
+  +geom_hline(yintercept=mean(LR$r),color="red")
+  +theme_bw()
+  +xlab("\u03bb")+ylab("r")
+)
+ggsave(plot=plt,filename="../outputs/QRE_CRRA_HomogeniousLR.png",dpi=1000)
+plt %>% print()
+
+library(GGally)
+plt<-ggpairs(LR %>% select(lambda,r))
+plt %>% print()
+```
+
+```{r}
+
+QREPredictions<-tibble()
+
+for (gg in 1:12) {
+  for (ss in 1:dim(LR)[1]) {
+    qre<-QREFixed(LR[ss,1],LR[ss,2],SC2008payoffs[[gg]]$Urow,SC2008payoffs[[gg]]$Ucol)
+    qre$game<-gg
+    QREPredictions<-rbind(QREPredictions,qre)
+  }
+}
+
+head(QREPredictions)
+
+```
+
+```{r}
+plt<-(
+  ggplot()
+  +geom_point(data=QREPredictions,aes(x=u,y=l,color="predictions"))
+  +geom_point(data=data,aes(x =row/count,y=column/count,color="data"),size=0.5)
+  +theme_bw()
+  +facet_wrap(~game)
+  +coord_fixed()
+  +theme(legend.position="bottom",legend.title=element_blank())
+)
+ggsave(plot=plt,filename="../outputs/QRE_CRRA_HomogeniousLR_predictions.png",dpi=1000)
+plt %>% print()
+
+for (gg in 1:12) {
+  print(paste(
+    gg," - ",QREPredictions %>% filter(game==gg) %>% select(u) %>% unlist() %>% mean(),QREPredictions %>% filter(game==gg) %>% select(u) %>% unlist() %>% sd(),QREPredictions %>% filter(game==gg) %>% select(l) %>% unlist() %>% mean(),QREPredictions %>% filter(game==gg) %>% select(l) %>% unlist() %>% sd()
+  ))
+  
+}
+
+
+```
+
+## Model estimates
+```{r}
+FITS<-readRDS("Estimates.rds") 
+paramlist<-c("lambda","taulambdaGame","r","taurGame","kappa","lp__")
+paramLabels<-c("$\\lambda$ - median","$\\sigma^G_\\lambda$","$r$ - median","$\\sigma_r^G$","$\\kappa$","lp")
+
+ 
+ESTIMATES<-tibble()
+for (ff in names(FITS)) {
+  estimates<-rstan::extract(FITS[[ff]])
+  ModelCharactaristics<-ff %>% strsplit(split="_") %>% unlist()
+  #ModelCharactaristics %>% print()
+  for (pp in paramlist) {
+    if (any(names(estimates)==pp)) {
+      tmp<-tibble(value = estimates[[pp]] %>% as.vector())
+      tmp$parameter<-pp
+      tmp$EqConcept<-ModelCharactaristics[1]
+      tmp$Risk<-ModelCharactaristics[2]
+      tmp$Heterogeneity<-ModelCharactaristics[3] 
+      tmp$filename<-ff
+      ESTIMATES<-rbind(ESTIMATES,tmp)
+    }
+    
+  }
+  if (ModelCharactaristics[3] =="Both") {
+    if (grepl("QRE",ModelCharactaristics[1]) ) {
+      tmp<-tibble(value = estimates[["taulambdaGame"]]^2/(estimates[["taulambdaGame"]]^2+estimates[["taulambdaCohort"]]^2))
+      tmp$parameter<-"rholambda"
+      tmp$EqConcept<-ModelCharactaristics[1]
+      tmp$Risk<-ModelCharactaristics[2]
+      tmp$Heterogeneity<-ModelCharactaristics[3] 
+      tmp$filename<-ff
+      ESTIMATES<-rbind(ESTIMATES,tmp)
+    }
+    if (ModelCharactaristics[2]=="CRRA" ) {
+       tmp<-tibble(value = estimates[["taurGame"]]^2/(estimates[["taurGame"]]^2+estimates[["taulambdaCohort"]]^2))
+      tmp$parameter<-"rhor"
+      tmp$EqConcept<-ModelCharactaristics[1]
+      tmp$Risk<-ModelCharactaristics[2]
+      tmp$Heterogeneity<-ModelCharactaristics[3] 
+      tmp$filename<-ff
+      ESTIMATES<-rbind(ESTIMATES,tmp)
+    }
+  }
+  
+}
+
+
+ESTIMATES %>% sample_n(15) %>% knitr::kable()  
+
+```
+
+```{r}
+kfold<-readRDS("kfold.rds") 
+
+ELPD<-c()
+
+for (mm in names(kfold)) {
+  ll<-kfold[[mm]]
+  # Old version -- here I was running into a log(0) problem
+  #ELPD[mm]<-((t(exp(ll)) %*% rep(1/dim(ll)[1],dim(ll)[1]))) %>% log() %>% sum() %>% as.numeric()
+  if (mm=="Nash_CRRA_Game_Ind.stan" | mm=="Nash_CRRA_Homogeneous_Ind.stan") {
+    add_ll<-1000
+  }
+  else {
+    add_ll<-0
+  }
+  ELPD[mm]<-((((t(exp(ll+add_ll)) %*% rep(1/dim(ll)[1],dim(ll)[1]))) %>% log())-add_ll) %>% sum() %>% as.numeric()
+}
+ELPD<-ELPD %>% as.vector()
+names(ELPD)<-names(kfold)
+ELPD %>% print()
+
+
+
+```
+
+```{r} 
+library(qwraps2)     
+library(kableExtra)     
+tableValues<-(
+  ESTIMATES
+  %>% group_by(filename,EqConcept,Risk,Heterogeneity,parameter)
+  %>% summarize(mean= mean(value),std = sd(value),msd = mean_sd(value,denote_sd = "paren"))
+  %>% mutate(msd = ifelse(parameter=="lp__",round(mean,digits=0),msd))
+)
+tableValues %>% knitr::kable()
+
+TABLE<-(
+  tableValues
+  %>% pivot_wider(id_cols=parameter,values_fill="",names_from = filename,values_from = msd)
+)
+rownames(TABLE)<-TABLE$parameter
+TABLE<-TABLE[paramlist,]  
+
+
+
+TABLE[,1]<-c() 
+rn<-rownames(TABLE)
+rownames(TABLE)<-rn
+
+#rownames(TABLE)<-c(rn,"elpd")
+
+ELPDTable<-c()
+for (cc in colnames(TABLE)) {
+  elpd<-ELPD[cc]
+  #if (!is.finite(elpd)) {
+  #  elpd<- -99999999
+  #}
+  
+  ELPDTable[cc] <-elpd
+}
+
+print(ELPDTable %>% sort(decreasing=TRUE))
+
+TABLE<-rbind(TABLE,paste(round(ELPDTable,2)))
+
+TABLE %>% kbl()
+
+TABLE<-TABLE[,order(-ELPDTable)]
+
+
+rownames(TABLE)<-c(paramLabels,"elpd")
+TABLE<-as.matrix(TABLE)
+
+```
+
+```{r}
+sc<-strsplit(colnames(TABLE),"_")  
+SC<-c()
+
+for (ss in sc) {
+  st<-ss[1] %>% str_replace("Beta","")
+  SC<-c(SC,st)
+}
+
+SC[SC=="QRE"]<-"logit QRE"
+SC[SC=="LuceQRE"]<-"Luce QRE" 
+
+
+  
+  #ifelse(
+  #grepl("QRE",colnames(TABLE)),"QRE",
+  #ifelse(
+  #  grepl("Nash",colnames(TABLE)),"Nash","Coin flips"
+  #)
+  #)
+SC %>% print()
+colnames(TABLE)<-c(paste0("(",1:length(names(FITS)),")"))
+TABLE<-rbind(TABLE,SC)
+
+
+
+rownames(TABLE)<-c(paramLabels,"elpd","Equilibrium concept")
+
+(rn<-rownames(TABLE))
+rn[rn=="lp"]<-"Parameters"
+rownames(TABLE)<-rn
+rn
+
+TABLE<-TABLE %>% t()
+
+for (rr in 1:dim(TABLE)[1]) {
+  np<-(TABLE[rr,1:5]!="") %>% sum()
+  TABLE[rr,"Parameters"]<-np
+}
+
+TABLE  %>% kbl() 
+fileConn<-file("../outputs/EstimatesSummary.txt")
+writeLines(TABLE  %>% kbl(format="latex",escape=FALSE,booktabs=TRUE) , fileConn) 
+close(fileConn) 
+
+```
+
